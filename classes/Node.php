@@ -7,10 +7,6 @@ class Node {
     private int $rightChildren = 0;
     private mixed $value = null;
 
-    public function Node() {
-        echo("Constructor?");
-    }
-
     public function insertPath(int $i, array $chars) {
         if ($i == count($chars)) {
             $this->value = bindec(join($chars));
