@@ -47,10 +47,19 @@ for ($align = $small; $align <= $large; $align++) {
     }
     if ($bestfuel == null || $fuel < $bestfuel) {
         $bestfuel = $fuel;
+        $bestalign = $align;
     }
 }
 $part2 = $bestfuel;
+echo("Align at: " . $bestalign . PHP_EOL);
 
+$avg = array_sum($nums) / count($nums);
+echo("Average at: " . $avg . PHP_EOL);
+
+// The average always seems to be close to the best alignment.
+// Either floor or ceil of the average seems to be it.
+// It seems like the sum of quadratics will still be a quadratic.
+// So there will be 1 minimum, and it will be either side of the average.
 
 echo("Part 2: " . $part2 . PHP_EOL);
 // 21646 is too high.
