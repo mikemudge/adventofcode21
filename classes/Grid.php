@@ -16,11 +16,9 @@ class Grid {
 
     public function getPos($x, $y) {
         if ($x < 0 || $x >= $this->width) {
-            error_log("OOB x $x");
             return null;
         }
         if ($y < 0 || $y >= $this->height) {
-            error_log("OOB y $y");
             return null;
         }
         return $this->data[$y][$x];
