@@ -5,12 +5,12 @@ class Grid {
     private int $height;
     private int $width;
 
-    public function __construct($width, $height) {
+    public function __construct($width, $height, $init=0) {
         $this->width = $width;
         $this->height = $height;
         $this->data = [];
         for ($y = 0; $y < $this->height; $y++) {
-            $this->data[] = array_fill(0, $width, 0);
+            $this->data[] = array_fill(0, $width, $init);
         }
     }
 
@@ -45,5 +45,25 @@ class Grid {
             $result .= "\n";
         }
         return $result;
+    }
+
+    public function getHeight(): int {
+        return $this->height;
+    }
+
+    public function getWidth(): int {
+        return $this->width;
+    }
+
+    public function countOccurrences(string $value): int {
+        $count = 0;
+        for ($y = 0; $y < $this->getHeight(); $y++) {
+            for ($x = 0; $x < $this->getWidth(); $x++) {
+                if ($this->getPos($x, $y) === $value) {
+                    $count++;
+                }
+            }
+        }
+        return $count;
     }
 }
