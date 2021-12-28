@@ -152,4 +152,3 @@ $part2 = $root->eval();
 echo("Part 1: " . $part1 . PHP_EOL);
 
 echo("Part 2: " . $part2 . PHP_EOL);
-// 2998 is too high.
