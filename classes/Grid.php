@@ -47,6 +47,17 @@ class Grid {
         return $result;
     }
 
+    public function subString($x1, $y1, $x2, $y2): string {
+        $result = "";
+        for ($y = $y1; $y < $y2; $y++) {
+            for ($x = $x1; $x < $x2; $x++) {
+                $result .= $this->getPos($x, $y);
+            }
+            $result .= "\n";
+        }
+        return $result;
+    }
+
     public function getHeight(): int {
         return $this->height;
     }
