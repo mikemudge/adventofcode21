@@ -7,7 +7,7 @@ $cwd = dirname(__FILE__);
 $input = file_get_contents("$cwd/input");
 
 // sample
-//$input = file_get_contents("$cwd/sample");
+$input = file_get_contents("$cwd/sample");
 
 $lines = explode("\n", $input);
 
@@ -19,7 +19,8 @@ $costs = [
 ];
 
 $adjacents = [
-    'left' => ['a', 'ab'],
+    'left2' => ['left'],
+    'left' => ['a', 'ab', 'left2'],
     'a' => ['left', 'ab'],
     'ab' => ['left', 'a', 'b', 'bc'],
     'b' => ['ab', 'bc'],
@@ -27,7 +28,18 @@ $adjacents = [
     'c' => ['bc', 'cd'],
     'cd' => ['bc', 'c', 'd', 'right'],
     'd' => ['cd', 'right'],
-    'right' => ['d', 'cd']
+    'right' => ['d', 'cd', 'right2'],
+    'right2' => ['right']
+];
+
+$lookupIndex = [
+    'left2',
+    'left',
+    'ab',
+    'bc',
+    'cd',
+    'right',
+    'right2'
 ];
 
 class ReversePQ extends SplPriorityQueue
@@ -39,43 +51,37 @@ class ReversePQ extends SplPriorityQueue
 }
 
 function print_state($state) {
-    $left = str_pad(join("", $state['left']), 2, ".", STR_PAD_LEFT);
-    $right = str_pad(join("", $state['right']), 2, ".", STR_PAD_RIGHT);
-    // TODO right might need reversing?
+    $left = ($state['left2'] ?: '.') . ($state['left'] ?: '.');
+    $right = ($state['right'] ?: '.') . ($state['right2'] ?: '.');
 
     $ab = $state['ab'] ?: '.';
     $bc = $state['bc'] ?: '.';
     $cd = $state['cd'] ?: '.';
-    $a1 = $state['a'][1] ?? '.';
-    $a2 = $state['a'][0] ?? '.';
-    $b1 = $state['b'][1] ?? '.';
-    $b2 = $state['b'][0] ?? '.';
-    $c1 = $state['c'][1] ?? '.';
-    $c2 = $state['c'][0] ?? '.';
-    $d1 = $state['d'][1] ?? '.';
-    $d2 = $state['d'][0] ?? '.';
+    $a = str_pad(join("", $state['a']), 4, ".", STR_PAD_RIGHT);
+    $b = str_pad(join("", $state['b']), 4, ".", STR_PAD_RIGHT);
+    $c = str_pad(join("", $state['c']), 4, ".", STR_PAD_RIGHT);
+    $d = str_pad(join("", $state['d']), 4, ".", STR_PAD_RIGHT);
     echo("#############\n");
     echo("#$left.$ab.$bc.$cd.$right#\n");
-    echo("###$a1#$b1#$c1#$d1###\n");
-    echo("###$a2#$b2#$c2#$d2###\n");
+    for ($i = 3; $i >= 0; $i--) {
+        echo("###" . $a[$i] . "#" . $b[$i] . "#" . $c[$i] . "#" . $d[$i] . "###\n");
+    }
     echo("#############\n");
 }
 
 function stateCacheKey($state) {
-    $left = str_pad(join("", $state['left']), 2, ".", STR_PAD_LEFT);
-    $right = str_pad(join("", $state['right']), 2, ".", STR_PAD_RIGHT);
+    $left = ($state['left2'] ?: '.') . ($state['left'] ?: '.');
+    $right = ($state['right'] ?: '.') . ($state['right2'] ?: '.');
     $ab = $state['ab'] ?: '.';
     $bc = $state['bc'] ?: '.';
     $cd = $state['cd'] ?: '.';
-    $a1 = $state['a'][1] ?? '.';
-    $a2 = $state['a'][0] ?? '.';
-    $b1 = $state['b'][1] ?? '.';
-    $b2 = $state['b'][0] ?? '.';
-    $c1 = $state['c'][1] ?? '.';
-    $c2 = $state['c'][0] ?? '.';
-    $d1 = $state['d'][1] ?? '.';
-    $d2 = $state['d'][0] ?? '.';
-    return $left . $ab . $bc . $cd . $right . $a1 . $a2 . $b1 . $b2 . $c1 . $c2 . $d1 . $d2;
+    $cur = $state['cur'] ?: 'X';
+    $homer = $state['homer'] ?: 'X';
+    $a = str_pad(join("", $state['a']), 4, ".", STR_PAD_RIGHT);
+    $b = str_pad(join("", $state['b']), 4, ".", STR_PAD_RIGHT);
+    $c = str_pad(join("", $state['c']), 4, ".", STR_PAD_RIGHT);
+    $d = str_pad(join("", $state['d']), 4, ".", STR_PAD_RIGHT);
+    return $left . $ab . $bc . $cd . $right . $a . $b . $c . $d . $cur . $homer;
 }
 
 function queue(array $state1, ReversePQ $pq, $verbose = false) {
@@ -85,12 +91,33 @@ function queue(array $state1, ReversePQ $pq, $verbose = false) {
         echo("key = $key\n");
     }
     // TODO hueristic could help performance?
-    $p = $state1['cost'] + 0;
+    $p = $state1['cost'] + hueristicCost($state1);
     $pq->insert($state1, $p);
+}
+
+function hueristicCost(array $state) {
+//    return 0;
+    // This doesn't seem to help.
+    global $costs;
+    $cost = 0;
+    foreach (['a','b','c','d'] as $l)
+    foreach ($state[$l] as $i=>$pod) {
+        $letter_diff = abs(ord($l) - ord(strtolower($pod)));
+        if ($letter_diff > 0) {
+            $steps = 2 * $letter_diff + (5 - $i);
+            $cost1 = $costs[$pod] * $steps;
+//            echo("$l, $pod, $letter_diff, $steps, $cost1\n");
+            $cost += $cost1;
+        } else {
+//            echo("$l, $pod, in the right place\n");
+        }
+    }
+    return $cost;
 }
 
 function getNeighbours(array $state, ReversePQ $pq, $verbose = false) {
     global $adjacents;
+    global $lookupIndex;
     foreach($adjacents as $k => $destinations) {
         $loc = $state[$k];
         if (empty($loc)) {
@@ -108,10 +135,11 @@ function getNeighbours(array $state, ReversePQ $pq, $verbose = false) {
         }
 
         foreach($destinations as $d) {
-            if (possibleMove($x, $state, $d)) {
-                // TODO calculate cost of this move.
+            if (possibleMove($k, $x, $state, $d)) {
                 $cost = costMove($k, $x, $state, $d);
-                echo("$x could move from $k to $d for " . $state['cost'] . "+" . $cost . "\n");
+                if ($verbose) {
+                    echo("$x could move from $k to $d for " . $state['cost'] . "+" . $cost . "\n");
+                }
                 $state1 = $state;
                 // Remove the amphipod from the loc.
                 if (is_array($state1[$k])) {
@@ -126,6 +154,27 @@ function getNeighbours(array $state, ReversePQ $pq, $verbose = false) {
                 } else {
                     $state1[$d] = $amphipod;
                 }
+
+                $cur = array_search($d, $lookupIndex);
+                if ($cur !== false) {
+                    // If this is the homer, we just move the location.
+                    if ($state1['homer']) {
+                        $state1['homer'] = $cur;
+                    }
+                    if ($state1['cur']) {
+                        if ($k != $lookupIndex[$state1['cur']]) {
+                            // It was not the cur which was moved.
+                            // Therefore this must be the new homer.
+                            $state1['homer'] = $cur;
+                        };
+                    }
+                    // Set cur to this as it was the last to move.
+                    $state1['cur'] = $cur;
+                } else {
+                    // If someone just went home both these are reset.
+                    $state1['cur'] = null;
+                    $state1['homer'] = null;
+                }
                 $state1['cost'] += $cost;
                 queue($state1, $pq, $verbose);
             }
@@ -138,40 +187,20 @@ function costMove(string $k, string $x, array $state, string $d): int {
     $cost = 0;
     if (in_array($k, ['a','b','c','d'])) {
         $s = count($state[$k]);
-        if ($s == 2) {
-            $cost += $costs[$x];
-        } else {
-            // Need to move 2 steps to get out of home.
-            $cost += 2 * $costs[$x];
-        }
-    } elseif (in_array($k, ['left', 'right'])) {
-        $occupiers = count($state[$k]);
-        if ($occupiers == 2) {
-            // Need to move the other occupier out 1.
-            $x2 = $state[$k][0];
-            $cost += $costs[$x2];
-        }
-        $cost += $costs[$x];
+        $steps = 5 - $s;
+        $cost += $steps * $costs[$x];
+    } elseif (in_array($k, ['left2', 'right2'])) {
+        // No cost, moving to the left/right will cost 1.
     } else {
         // Must be ab, bc or cd.
         $cost += $costs[$x];
     }
     if (in_array($d, ['a','b','c','d'])) {
         $s = count($state[$d]);
-        if ($s == 1) {
-            $cost += $costs[$x];
-        } else {
-            // Need to move 2 steps to get out of home.
-            $cost += 2 * $costs[$x];
-        }
-    } elseif (in_array($d, ['left', 'right'])) {
-        $occupiers = count($state[$d]);
-        if ($occupiers == 1) {
-            // Need to move the other occupier in 1.
-            $x2 = $state[$d][0];
-            $cost += $costs[$x2];
-        }
-        $cost += $costs[$x];
+        $steps = 4 - $s;
+        $cost += $steps * $costs[$x];
+    } elseif (in_array($d, ['left2', 'right2'])) {
+        // No cost, moving from the left/right will cost 1.
     } else {
         // Must be ab, bc or cd.
         $cost += $costs[$x];
@@ -179,7 +208,15 @@ function costMove(string $k, string $x, array $state, string $d): int {
     return $cost;
 }
 
-function possibleMove(string $x, array $state, string $d): bool {
+function possibleMove(string $k, string $x, array $state, string $d): bool {
+    global $lookupIndex;
+    if ($state['homer']) {
+        $allowedMove = $lookupIndex[$state['homer']];
+        if ($allowedMove != $k) {
+            return false;
+        }
+        // Only this pod can move until it gets home.
+    }
     if (in_array($d, ['a','b','c','d'])) {
         if (strtolower($x) != $d) {
             // Can't move to a home you don't live in.
@@ -187,20 +224,20 @@ function possibleMove(string $x, array $state, string $d): bool {
         }
         // The pod does live there.
         $occupiers = count($state[$d]);
-        if ($occupiers == 2) {
+        if ($occupiers == 4) {
             // Home is full.
             return false;
         }
-        if ($occupiers == 1 && $state[$d][0] != $x) {
-            // A stranger is at your home.
-            return false;
+        if ($occupiers > 0) {
+            foreach ($state[$d] as $o) {
+                if ($o != $x) {
+                    // A stranger is at your home.
+                    return false;
+                }
+            }
         }
-        // no one is home or only your friend is home.
+        // no one is home or only your friends are home.
         return true;
-    } elseif (in_array($d, ['left', 'right'])) {
-        $occupiers = count($state[$d]);
-        // Can go here if there is space.
-        return $occupiers < 2;
     } else {
         // Must be ab, bc or cd.
         // Can go there if no one is there.
@@ -209,21 +246,26 @@ function possibleMove(string $x, array $state, string $d): bool {
 }
 
 $start = [
-    'left' => [],
-    'right' => [],
-    'a' => [$lines[3][3], $lines[2][3]],
-    'b' => [$lines[3][5], $lines[2][5]],
-    'c' => [$lines[3][7], $lines[2][7]],
-    'd' => [$lines[3][9], $lines[2][9]],
+    'left' => null,
+    'left2' => null,
+    'right' => null,
+    'right2' => null,
+    'a' => [$lines[5][3], $lines[4][3], $lines[3][3], $lines[2][3]],
+    'b' => [$lines[5][5], $lines[4][5], $lines[3][5], $lines[2][5]],
+    'c' => [$lines[5][7], $lines[4][7], $lines[3][7], $lines[2][7]],
+    'd' => [$lines[5][9], $lines[4][9], $lines[3][9], $lines[2][9]],
     'ab' => null,
     'bc' => null,
     'cd' => null,
     'cost' => 0,
+    'cur' => null,
+    'homer' => null,
 ];
 
 $pq = new ReversePQ();
 $pq->insert($start, 0);
 
+hueristicCost($start);
 $verbose = false;
 $visited = [];
 $iteration = 0;
@@ -231,8 +273,8 @@ $winner = null;
 while(!$pq->isEmpty()) {
     $state = $pq->extract();
 
-    if ($state['a'] == ['A', 'A'] && $state['b'] == ['B', 'B'] &&
-        $state['c'] == ['C', 'C'] && $state['d'] == ['D', 'D']) {
+    if ($state['a'] == ['A', 'A', 'A', 'A'] && $state['b'] == ['B', 'B', 'B', 'B'] &&
+        $state['c'] == ['C', 'C', 'C', 'C'] && $state['d'] == ['D', 'D', 'D', 'D']) {
         // winner found.
         $winner = $state;
         break;
@@ -248,12 +290,10 @@ while(!$pq->isEmpty()) {
     // Only increase for new states.
     $iteration++;
     echo("Iteration $iteration getting next state, size = " . $pq->count() . "\n");
-//    if ($key == "...D....ABBCCDA") {
-//        $verbose = true;
-//    }
-//    if ($state['cost'] == 20 && $state['bc'] == 'B') {
-//        $verbose = true;
-//    }
+    if ($key == "AA...ADAD..BBBBCCCCDD..XX") {
+        $verbose = true;
+//        print_r($state);
+    }
     // calculate neighbours and insert.
     if ($verbose) {
         echo("Cost: " . $state['cost'] . "\n");
