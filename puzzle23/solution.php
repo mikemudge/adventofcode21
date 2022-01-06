@@ -7,7 +7,7 @@ $cwd = dirname(__FILE__);
 $input = file_get_contents("$cwd/input");
 
 // sample
-$input = file_get_contents("$cwd/sample");
+//$input = file_get_contents("$cwd/sample");
 
 $lines = explode("\n", $input);
 
@@ -17,6 +17,11 @@ $costs = [
     'C' => 100,
     'D' => 1000
 ];
+
+$rooms = ['a','b','c','d'];
+$hallways = ['left2', 'left', 'ab', 'bc', 'cd', 'right', 'right2'];
+$locations = ['left2', 'left', 'a', 'ab', 'b', 'bc', 'c', 'cd', 'd', 'right', 'right2'];
+$indexes = array_flip($locations);
 
 $adjacents = [
     'left2' => ['left'],
@@ -30,16 +35,6 @@ $adjacents = [
     'd' => ['cd', 'right'],
     'right' => ['d', 'cd', 'right2'],
     'right2' => ['right']
-];
-
-$lookupIndex = [
-    'left2',
-    'left',
-    'ab',
-    'bc',
-    'cd',
-    'right',
-    'right2'
 ];
 
 class ReversePQ extends SplPriorityQueue
@@ -75,13 +70,11 @@ function stateCacheKey($state) {
     $ab = $state['ab'] ?: '.';
     $bc = $state['bc'] ?: '.';
     $cd = $state['cd'] ?: '.';
-    $cur = $state['cur'] ?: 'X';
-    $homer = $state['homer'] ?: 'X';
     $a = str_pad(join("", $state['a']), 4, ".", STR_PAD_RIGHT);
     $b = str_pad(join("", $state['b']), 4, ".", STR_PAD_RIGHT);
     $c = str_pad(join("", $state['c']), 4, ".", STR_PAD_RIGHT);
     $d = str_pad(join("", $state['d']), 4, ".", STR_PAD_RIGHT);
-    return $left . $ab . $bc . $cd . $right . $a . $b . $c . $d . $cur . $homer;
+    return $left . $ab . $bc . $cd . $right . $a . $b . $c . $d;
 }
 
 function queue(array $state1, ReversePQ $pq, $verbose = false) {
@@ -95,154 +88,158 @@ function queue(array $state1, ReversePQ $pq, $verbose = false) {
     $pq->insert($state1, $p);
 }
 
-function hueristicCost(array $state) {
-//    return 0;
-    // This doesn't seem to help.
+function hueristicCost(array $state): int {
     global $costs;
+    global $rooms;
+    global $indexes;
+    global $hallways;
+
     $cost = 0;
-    foreach (['a','b','c','d'] as $l)
-    foreach ($state[$l] as $i=>$pod) {
-        $letter_diff = abs(ord($l) - ord(strtolower($pod)));
-        if ($letter_diff > 0) {
-            $steps = 2 * $letter_diff + (5 - $i);
-            $cost1 = $costs[$pod] * $steps;
-//            echo("$l, $pod, $letter_diff, $steps, $cost1\n");
-            $cost += $cost1;
-        } else {
-//            echo("$l, $pod, in the right place\n");
+    foreach ($rooms as $r) {
+        // See how many are in the right place.
+        $expected = strtoupper($r);
+        $correct = 0;
+        foreach($state[$r] as $occupier) {
+            if ($occupier != $expected) {
+                break;
+            }
+            $correct++;
         }
+        // Number of amphipods which need to move from the hallway into the room.
+        $moving = 4 - $correct;
+        $steps = $moving * ($moving + 1) / 2;
+        $cost += $steps * $costs[$expected];
+
+        // Also calculate the steps and cost to move the amphipods out of the room.
+        // starting after the correct ones (which don't move)
+        for($i = $correct; $i < count($state[$r]); $i++) {
+            // This is steps to exit the room to the hall.
+            $steps = 5 - $i;
+            // This is the amphipod type (A,B,C or D)
+            $x = $state[$r][$i];
+            $destRoom = strtolower($x);
+            // This is how many steps along the hall to outside their room.
+            $hallSteps = abs($indexes[$destRoom] - $indexes[$r]);
+            $cost += ($steps + $hallSteps) * $costs[$x];
+        }
+    }
+
+    // Now we just need to calculate the movement for amphipod's in the hallway.
+    foreach ($hallways as $h) {
+        if (empty($state[$h])) {
+            continue;
+        }
+        $x = $state[$h];
+        $destRoom = strtolower($x);
+        $steps = abs($indexes[$h] - $indexes[$destRoom]);
+        $cost += $steps * $costs[$x];
     }
     return $cost;
 }
 
 function getNeighbours(array $state, ReversePQ $pq, $verbose = false) {
-    global $adjacents;
-    global $lookupIndex;
-    foreach($adjacents as $k => $destinations) {
-        $loc = $state[$k];
-        if (empty($loc)) {
-            // Nothing at this location to move
+    global $indexes;
+    global $rooms;
+    global $hallways;
+    global $costs;
+    foreach ($rooms as $room) {
+        if (empty($state[$room])) {
             continue;
         }
-        if (is_array($loc)) {
-            $x = $loc[count($loc) - 1];
-            if (!$x) {
-                print_r($state);
-                throw new RuntimeException("Expecting $k to be not empty");
-            }
-        } else {
-            $x = $loc;
-        }
-
-        foreach($destinations as $d) {
-            if (possibleMove($k, $x, $state, $d)) {
-                $cost = costMove($k, $x, $state, $d);
+        // Get the top amphipod in the room
+        $amphipod = $state[$room][count($state[$room]) - 1];
+        foreach($hallways as $dest) {
+            if (possibleHallMove($room, $state, $dest)) {
+                // Move along the hallway to outside the room.
+                $steps = abs($indexes[$room] - $indexes[$dest]);
+                // Then move into the room
+                // cost is 4, 3, 2, 1 based on 1, 2, 3, 4 pods in the room.
+                $steps += 5 - count($state[$room]);
+                $cost = $steps * $costs[$amphipod];
                 if ($verbose) {
-                    echo("$x could move from $k to $d for " . $state['cost'] . "+" . $cost . "\n");
+                    echo("$amphipod could move from $room to $dest for " . $state['cost'] . "+" . $cost . "\n");
                 }
+                // move
                 $state1 = $state;
-                // Remove the amphipod from the loc.
-                if (is_array($state1[$k])) {
-                    $amphipod = array_pop($state1[$k]);
-                } else {
-                    $amphipod = $state1[$k];
-                    $state1[$k] = null;
-                }
-                // And set it to the destination
-                if (is_array($state1[$d])) {
-                    $state1[$d][] = $amphipod;
-                } else {
-                    $state1[$d] = $amphipod;
-                }
-
-                $cur = array_search($d, $lookupIndex);
-                if ($cur !== false) {
-                    // If this is the homer, we just move the location.
-                    if ($state1['homer']) {
-                        $state1['homer'] = $cur;
-                    }
-                    if ($state1['cur']) {
-                        if ($k != $lookupIndex[$state1['cur']]) {
-                            // It was not the cur which was moved.
-                            // Therefore this must be the new homer.
-                            $state1['homer'] = $cur;
-                        };
-                    }
-                    // Set cur to this as it was the last to move.
-                    $state1['cur'] = $cur;
-                } else {
-                    // If someone just went home both these are reset.
-                    $state1['cur'] = null;
-                    $state1['homer'] = null;
-                }
+                // Move the pod from the room to the hall location.
+                $amphipod = array_pop($state1[$room]);
+                $state1[$dest] = $amphipod;
                 $state1['cost'] += $cost;
                 queue($state1, $pq, $verbose);
             }
         }
     }
-}
-
-function costMove(string $k, string $x, array $state, string $d): int {
-    global $costs;
-    $cost = 0;
-    if (in_array($k, ['a','b','c','d'])) {
-        $s = count($state[$k]);
-        $steps = 5 - $s;
-        $cost += $steps * $costs[$x];
-    } elseif (in_array($k, ['left2', 'right2'])) {
-        // No cost, moving to the left/right will cost 1.
-    } else {
-        // Must be ab, bc or cd.
-        $cost += $costs[$x];
-    }
-    if (in_array($d, ['a','b','c','d'])) {
-        $s = count($state[$d]);
-        $steps = 4 - $s;
-        $cost += $steps * $costs[$x];
-    } elseif (in_array($d, ['left2', 'right2'])) {
-        // No cost, moving from the left/right will cost 1.
-    } else {
-        // Must be ab, bc or cd.
-        $cost += $costs[$x];
-    }
-    return $cost;
-}
-
-function possibleMove(string $k, string $x, array $state, string $d): bool {
-    global $lookupIndex;
-    if ($state['homer']) {
-        $allowedMove = $lookupIndex[$state['homer']];
-        if ($allowedMove != $k) {
-            return false;
+    foreach($hallways as $hall) {
+        if (empty($state[$hall])) {
+            continue;
         }
-        // Only this pod can move until it gets home.
-    }
-    if (in_array($d, ['a','b','c','d'])) {
-        if (strtolower($x) != $d) {
-            // Can't move to a home you don't live in.
-            return false;
-        }
-        // The pod does live there.
-        $occupiers = count($state[$d]);
-        if ($occupiers == 4) {
-            // Home is full.
-            return false;
-        }
-        if ($occupiers > 0) {
-            foreach ($state[$d] as $o) {
-                if ($o != $x) {
-                    // A stranger is at your home.
-                    return false;
-                }
+        $amphipod = $state[$hall];
+        // Only one possible room this could move into.
+        $destRoom = strtolower($amphipod);
+        if (possibleRoomMove($hall, $amphipod, $state, $destRoom)) {
+            // Move to the hallway.
+            // cost is 4, 3, 2, 1 based on 0, 1, 2, 3 pods in the room.
+            $steps = 4 - count($state[$destRoom]);
+            // then move along the hallway to the new location.
+            $steps += abs($indexes[$destRoom] - $indexes[$hall]);
+            $cost = $steps * $costs[$amphipod];
+            if ($verbose) {
+                echo("$amphipod could move from $hall to $destRoom for " . $state['cost'] . "+" . $cost . "\n");
             }
+
+            // move.
+            $state1 = $state;
+            $state1[$hall] = null;
+            $state1[$destRoom][] = $amphipod;
+            $state1['cost'] += $cost;
+            queue($state1, $pq, $verbose);
         }
-        // no one is home or only your friends are home.
-        return true;
-    } else {
-        // Must be ab, bc or cd.
-        // Can go there if no one is there.
-        return is_null($state[$d]);
     }
+}
+
+function isHallClear(array $state, string $a, string $b): bool {
+    global $indexes;
+    global $locations;
+    $left = min($indexes[$a], $indexes[$b]);
+    $right = max($indexes[$a], $indexes[$b]);
+    for ($i = $left + 1; $i < $right; $i++) {
+        $locName = $locations[$i];
+        if (in_array($locName, ['a','b','c','d'])) {
+            // The space outside a room must be empty.
+            continue;
+        }
+        if (!empty($state[$locName])) {
+            // Someones in the way.
+            return false;
+        }
+    }
+
+    // Check for blockers between a and b
+    return true;
+}
+
+function possibleRoomMove(string $hall, mixed $amphipod, array $state, string $destRoom): bool {
+    if (!isHallClear($state, $hall, $destRoom)) {
+        // Can't use the hallway to get there.
+        return false;
+    }
+    foreach ($state[$destRoom] as $o) {
+        if ($o != $amphipod) {
+            // A stranger is at your home so you can't go there.
+            return false;
+        }
+    }
+    // no one is home or only your friends are home.
+    return true;
+}
+
+function possibleHallMove(string $room, array $state, string $dest): bool {
+    if (!isHallClear($state, $dest, $room)) {
+        // Can't use the hallway to get there.
+        return false;
+    }
+    // Make sure the destination is also clear.
+    return is_null($state[$dest]);
 }
 
 $start = [
@@ -258,14 +255,12 @@ $start = [
     'bc' => null,
     'cd' => null,
     'cost' => 0,
-    'cur' => null,
-    'homer' => null,
 ];
 
 $pq = new ReversePQ();
 $pq->insert($start, 0);
 
-hueristicCost($start);
+echo("hCost = " . hueristicCost($start) . "\n");
 $verbose = false;
 $visited = [];
 $iteration = 0;
@@ -289,8 +284,8 @@ while(!$pq->isEmpty()) {
 
     // Only increase for new states.
     $iteration++;
-    echo("Iteration $iteration getting next state, size = " . $pq->count() . "\n");
-    if ($key == "AA...ADAD..BBBBCCCCDD..XX") {
+    echo("Iteration $iteration getting next state, size = " . $pq->count() . " cost = ". $state['cost'] . "\n");
+    if ($key == ".......AAAABBBBCCCCDDDD") {
         $verbose = true;
 //        print_r($state);
     }
@@ -319,3 +314,4 @@ if ($winner) {
 echo("Part 1: " . $part1 . PHP_EOL);
 
 echo("Part 2: " . $part2 . PHP_EOL);
+// 47768 is too high
